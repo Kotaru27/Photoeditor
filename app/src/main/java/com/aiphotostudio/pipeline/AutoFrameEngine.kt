@@ -6,7 +6,7 @@ import kotlin.math.max
 import kotlin.math.min
 
 /**
- * Auto Frame 2.3: forced-safe empty top crop.
+ * Auto Frame 2.3: forced-safe empty top crop (v1.4.3: relaxed detection + forced apply).
  *
  * Uses subject bounds + empty-space pressure, plus a direct top empty-band detector.
  * The goal is not a fixed crop, but a crop that improves each image's composition
@@ -51,11 +51,14 @@ object AutoFrameEngine {
         val threshold = if (decisiveScene) 0.015f else 0.055f
         var chosen = if (best.second > originalScore + threshold) best.first else candidates.first()
 
-        // Forced-safe framing: if a strong empty top band was found directly and the
-        // subject sits safely below it, apply the crop even if candidate scoring hesitated.
+        // v1.4.3 forced-safe framing: if a clear removable empty top band is detected and
+        // the subject is safely below it, apply the crop directly instead of letting
+        // scoring hesitate. This targets the repeated failure where white/gray sky
+        // stayed in the image.
         if (!portraitSafe && emptyBand.found && chosen.top < emptyBand.bandEnd) {
             val forced = CropCandidate(0f, emptyBand.bandEnd, 1f, 1f)
-            if (scoreCandidate(forced, bounds, empty, analysis, profile) > -4f) {
+            val subjectSafeBelowBand = bounds.top >= emptyBand.bandEnd + 0.02f
+            if (subjectSafeBelowBand && scoreCandidate(forced, bounds, empty, analysis, profile) > -6f) {
                 chosen = forced
             }
         }
@@ -74,9 +77,11 @@ object AutoFrameEngine {
      * specifically targets white/gray sky, blank wall, and empty top-space failures.
      */
     private fun detectEmptyTopBand(dense: DenseAnalysisMap, bounds: SubjectBounds): EmptyBandResult {
-        val rowEmptyThreshold = 0.42f
-        val rowSubjectThreshold = 0.16f
-        val rowTextureThreshold = 0.30f
+        // v1.4.3: relaxed thresholds so faint wires/cloud texture/compression noise
+        // do not prevent top empty-space detection as easily.
+        val rowEmptyThreshold = 0.34f
+        val rowSubjectThreshold = 0.22f
+        val rowTextureThreshold = 0.40f
         val maxBandFraction = min(0.28f, (bounds.top - 0.02f).coerceAtLeast(0f))
         if (maxBandFraction < 0.06f) return EmptyBandResult(false, 0f)
 

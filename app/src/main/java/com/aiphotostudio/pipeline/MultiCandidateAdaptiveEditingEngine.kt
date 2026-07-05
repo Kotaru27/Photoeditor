@@ -229,7 +229,8 @@ object MultiCandidateAdaptiveEditingEngine {
         if (filtered.none { it.name.contains("Subject", ignoreCase = true) } && profile.subjectStrength > 0.22f && !profile.shouldEnhanceObjectMaterial) {
             candidates.firstOrNull { it.name.contains("Subject", ignoreCase = true) }?.let { filtered.add(it) }
         }
-        return filtered.distinctBy { it.name }.take(5).ifEmpty { candidates.take(3) }
+        // v1.4.3 performance optimization: candidate filtering now keeps up to 4 candidates instead of 5.
+        return filtered.distinctBy { it.name }.take(4).ifEmpty { candidates.take(3) }
     }
 
     private fun scoreCandidate(original: CandidateStats, edited: CandidateStats, a: AnalysisResult, profile: SceneUnderstandingProfile, candidate: Candidate): Int {
@@ -287,7 +288,8 @@ object MultiCandidateAdaptiveEditingEngine {
     }
 
     private fun downscaleForScoring(source: Bitmap): Bitmap {
-        val maxDim = 900
+        // v1.4.3 performance optimization: reduced candidate scoring preview from 900px to 720px.
+        val maxDim = 720
         val largest = max(source.width, source.height)
         if (largest <= maxDim) return source
         val scale = maxDim.toFloat() / largest.toFloat()
