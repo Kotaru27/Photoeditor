@@ -2,111 +2,123 @@ package com.aiphotostudio.pipeline
 
 import com.aiphotostudio.editgraph.GeometryOperation
 import kotlin.math.abs
+import kotlin.math.max
+import kotlin.math.min
 
 /**
- * Auto Frame 2.0: candidate-based composition scoring.
+ * Auto Frame 2.1: decisive candidate-based composition scoring.
  *
- * Generates several safe crop candidates and chooses the one that improves composition
- * based on subject safety, empty-space removal, sky reduction, and distraction reduction.
+ * Uses subject bounds + empty-space pressure. The goal is not a fixed crop, but a crop
+ * that improves each image's composition while preserving the subject.
  */
 object AutoFrameEngine {
     fun plan(analysis: AnalysisResult, profile: SceneUnderstandingProfile): GeometryOperation {
         val dense = analysis.denseMap
-        val bounds = estimateSubjectBounds(dense)
-        val emptyTop = maxOf(analysis.regionMap.emptyTopPressure, analysis.denseMap.summary.emptyTopPressure)
-        val skyPressure = maxOf(analysis.regionMap.skyPressure, analysis.denseMap.summary.topSkyPressure)
+        val bounds = estimateSubjectBounds(dense, profile)
+        val empty = estimateEmptySpace(dense)
         val objectScene = profile.shouldEnhanceObjectMaterial || profile.dominant == SceneDominant.OBJECT_MATERIAL
         val portraitSafe = profile.shouldProtectSkin || profile.dominant == SceneDominant.PERSON
+        val skyPressure = maxOf(profile.skyHeavyLikelihood, dense.summary.topSkyPressure, analysis.regionMap.skyPressure)
+        val subjectCenterY = (bounds.top + bounds.bottom) / 2f
 
-        val candidates = mutableListOf<CropCandidate>()
-        candidates += CropCandidate(0f, 0f, 1f, 1f)
-
-        val topOptions = if (portraitSafe) {
-            listOf(0.03f, 0.05f, 0.07f)
-        } else if (objectScene && emptyTop > 0.18f) {
-            listOf(0.06f, 0.10f, 0.14f, 0.18f, 0.22f)
-        } else if (skyPressure > 0.28f || emptyTop > 0.22f) {
-            listOf(0.05f, 0.08f, 0.12f, 0.15f)
-        } else {
-            listOf(0.04f, 0.07f)
+        val candidates = mutableListOf(CropCandidate(0f, 0f, 1f, 1f))
+        val topOptions = when {
+            portraitSafe -> listOf(0.02f, 0.04f, 0.06f, 0.08f)
+            objectScene && empty.topPressure > 0.18f && subjectCenterY > 0.40f -> listOf(0.08f, 0.12f, 0.16f, 0.20f, 0.24f, 0.28f)
+            skyPressure > 0.28f || empty.topPressure > 0.20f -> listOf(0.06f, 0.10f, 0.14f, 0.18f, 0.22f)
+            else -> listOf(0.04f, 0.08f, 0.12f)
         }
-
         for (top in topOptions) {
             candidates += CropCandidate(0f, top, 1f, 1f)
-            if (!portraitSafe && profile.backgroundClutter > 0.24f) {
-                candidates += CropCandidate(0.015f, top, 0.985f, 1f)
-                candidates += CropCandidate(0.025f, top, 0.975f, 1f)
+            if (!portraitSafe && (profile.backgroundClutter > 0.20f || empty.sidePressure > 0.15f)) {
+                candidates += CropCandidate(0.018f, top, 0.982f, 1f)
+                candidates += CropCandidate(0.035f, top, 0.965f, 1f)
             }
         }
 
-        val best = candidates.maxByOrNull { scoreCandidate(it, bounds, analysis, profile) } ?: candidates.first()
-        val originalScore = scoreCandidate(candidates.first(), bounds, analysis, profile)
-        val bestScore = scoreCandidate(best, bounds, analysis, profile)
+        val scored = candidates.map { it to scoreCandidate(it, bounds, empty, analysis, profile) }
+        val originalScore = scored.first { it.first.top == 0f && it.first.left == 0f }.second
+        val best = scored.maxByOrNull { it.second } ?: scored.first()
 
-        // Only crop when the improvement is real enough.
-        val chosen = if (bestScore > originalScore + 0.06f) best else candidates.first()
+        val decisiveScene = (objectScene && empty.topPressure > 0.16f && bounds.top > 0.24f) ||
+            (!portraitSafe && skyPressure > 0.34f && bounds.top > 0.22f)
+        val threshold = if (decisiveScene) 0.015f else 0.055f
+        val chosen = if (best.second > originalScore + threshold) best.first else candidates.first()
+
         return GeometryOperation(
             cropLeft = chosen.left.coerceIn(0f, 0.18f),
-            cropTop = chosen.top.coerceIn(0f, if (portraitSafe) 0.09f else 0.25f),
+            cropTop = chosen.top.coerceIn(0f, if (portraitSafe) 0.10f else 0.30f),
             cropRight = chosen.right.coerceIn(0.82f, 1f),
             cropBottom = chosen.bottom.coerceIn(0.82f, 1f)
         )
     }
 
-    private fun scoreCandidate(c: CropCandidate, b: SubjectBounds, a: AnalysisResult, p: SceneUnderstandingProfile): Float {
+    private fun scoreCandidate(c: CropCandidate, b: SubjectBounds, e: EmptySpaceProfile, a: AnalysisResult, p: SceneUnderstandingProfile): Float {
         val cropW = c.right - c.left
         val cropH = c.bottom - c.top
-        if (cropW <= 0.62f || cropH <= 0.62f) return -10f
-
-        val subjectInside = c.left < b.left && c.right > b.right && c.top < b.top && c.bottom > b.bottom
-        if (!subjectInside) return -8f
+        if (cropW <= 0.58f || cropH <= 0.58f) return -10f
+        if (!(c.left < b.left && c.right > b.right && c.top < b.top && c.bottom > b.bottom)) return -8f
 
         val topMargin = b.top - c.top
         val bottomMargin = c.bottom - b.bottom
         val leftMargin = b.left - c.left
         val rightMargin = c.right - b.right
-        val safety = listOf(topMargin, bottomMargin, leftMargin, rightMargin).minOrNull() ?: 0f
-        if (safety < 0.025f) return -4f
+        val safety = min(min(topMargin, bottomMargin), min(leftMargin, rightMargin))
+        if (safety < 0.018f) return -5f
 
-        val subjectAreaBefore = (b.right - b.left) * (b.bottom - b.top)
-        val subjectAreaAfter = subjectAreaBefore / (cropW * cropH)
-        val sizeGain = (subjectAreaAfter - subjectAreaBefore).coerceIn(0f, 0.35f)
-        val emptyTop = maxOf(a.regionMap.emptyTopPressure, a.denseMap.summary.emptyTopPressure)
-        val skyPressure = maxOf(a.regionMap.skyPressure, a.denseMap.summary.topSkyPressure)
+        val subjectArea = (b.right - b.left) * (b.bottom - b.top)
+        val subjectScaleGain = (subjectArea / (cropW * cropH) - subjectArea).coerceIn(0f, 0.55f)
         val removedTop = c.top
-        val subjectYAfter = ((b.top + b.bottom) / 2f - c.top) / cropH
-        val thirdsScore = 1f - minOf(abs(subjectYAfter - 0.58f), abs(subjectYAfter - 0.42f), abs(subjectYAfter - 0.50f))
-        val clutterReduction = (c.left + (1f - c.right)) * p.backgroundClutter
+        val removedSides = c.left + (1f - c.right)
+        val subjectYAfter = (((b.top + b.bottom) / 2f) - c.top) / cropH
+        val balance = 1f - minOf(abs(subjectYAfter - 0.56f), abs(subjectYAfter - 0.45f), abs(subjectYAfter - 0.50f))
+        val skyPressure = maxOf(a.regionMap.skyPressure, a.denseMap.summary.topSkyPressure, p.skyHeavyLikelihood)
 
         var score = 0f
-        score += sizeGain * 2.6f
-        score += removedTop * emptyTop * 3.2f
-        score += removedTop * skyPressure * 2.2f
-        score += thirdsScore * 0.18f
-        score += clutterReduction * 1.6f
-        score += safety.coerceIn(0f, 0.12f) * 0.75f
+        score += subjectScaleGain * 3.4f
+        score += removedTop * e.topPressure * 5.0f
+        score += removedTop * skyPressure * 3.0f
+        score += removedSides * max(p.backgroundClutter, e.sidePressure) * 2.2f
+        score += balance * 0.20f
+        score += safety.coerceIn(0f, 0.14f) * 0.55f
 
-        if (p.shouldProtectSkin && c.top > 0.09f) score -= 0.75f
-        if (p.dominant == SceneDominant.SKY_LANDSCAPE && c.top > 0.12f) score -= 0.45f
-        if (removedTop > 0.18f && emptyTop < 0.24f) score -= 0.55f
+        if (p.shouldProtectSkin && removedTop > 0.08f) score -= 0.90f
+        if (p.dominant == SceneDominant.SKY_LANDSCAPE && removedTop > 0.14f) score -= 0.55f
+        if (removedTop > 0.22f && e.topPressure < 0.22f) score -= 0.45f
+        if (subjectYAfter < 0.30f || subjectYAfter > 0.78f) score -= 0.25f
         return score
     }
 
-    private fun estimateSubjectBounds(dense: DenseAnalysisMap): SubjectBounds {
-        var maxS = 0f
-        for (v in dense.saliency) if (v > maxS) maxS = v
-        val threshold = (maxS * 0.58f).coerceAtLeast(0.22f)
-        var minX = 1f; var minY = 1f; var maxX = 0f; var maxY = 0f
-        var found = false
+    private fun estimateSubjectBounds(dense: DenseAnalysisMap, profile: SceneUnderstandingProfile): SubjectBounds {
+        var maxSubject = 0f
+        val weights = FloatArray(dense.width * dense.height)
         for (y in 0 until dense.height) {
             for (x in 0 until dense.width) {
                 val i = y * dense.width + x
-                val subject = dense.saliency[i] * (1f - dense.skyLikelihood[i] * 0.85f) * (1f - dense.distraction[i] * 0.25f)
-                if (subject >= threshold) {
+                val ny = y.toFloat() / (dense.height - 1).coerceAtLeast(1)
+                val foreground = smoothstep(0.25f, 0.92f, ny)
+                val objectTerm = dense.warmObjectLikelihood[i] * (0.6f + dense.texture[i] * 0.6f)
+                val portraitTerm = dense.skinLikelihood[i] * (0.65f + dense.saliency[i] * 0.35f)
+                val generic = dense.saliency[i] * (1f - dense.skyLikelihood[i] * 0.95f) * (1f - dense.distraction[i] * 0.30f)
+                val w = when {
+                    profile.shouldEnhanceObjectMaterial -> objectTerm * 0.55f + generic * 0.35f + foreground * 0.10f
+                    profile.shouldProtectSkin -> portraitTerm * 0.55f + generic * 0.35f + foreground * 0.10f
+                    else -> generic * 0.75f + objectTerm * 0.15f + portraitTerm * 0.10f
+                }.coerceIn(0f, 1f)
+                weights[i] = w
+                if (w > maxSubject) maxSubject = w
+            }
+        }
+        val threshold = (maxSubject * 0.46f).coerceAtLeast(0.10f)
+        var minX = 1f; var minY = 1f; var maxX = 0f; var maxY = 0f; var found = false
+        for (y in 0 until dense.height) {
+            for (x in 0 until dense.width) {
+                val i = y * dense.width + x
+                if (weights[i] >= threshold) {
                     val nx = x.toFloat() / (dense.width - 1).coerceAtLeast(1)
                     val ny = y.toFloat() / (dense.height - 1).coerceAtLeast(1)
-                    minX = minOf(minX, nx); maxX = maxOf(maxX, nx)
-                    minY = minOf(minY, ny); maxY = maxOf(maxY, ny)
+                    minX = min(minX, nx); maxX = max(maxX, nx)
+                    minY = min(minY, ny); maxY = max(maxY, ny)
                     found = true
                 }
             }
@@ -114,17 +126,36 @@ object AutoFrameEngine {
         if (!found) {
             val cx = dense.summary.subjectX
             val cy = dense.summary.subjectY
-            return SubjectBounds((cx - 0.22f).coerceIn(0f, 1f), (cy - 0.24f).coerceIn(0f, 1f), (cx + 0.22f).coerceIn(0f, 1f), (cy + 0.24f).coerceIn(0f, 1f))
+            return SubjectBounds((cx - 0.22f).coerceIn(0f, 1f), (cy - 0.22f).coerceIn(0f, 1f), (cx + 0.22f).coerceIn(0f, 1f), (cy + 0.26f).coerceIn(0f, 1f))
         }
-        // Expand bounds to keep safe margins around the subject.
-        return SubjectBounds(
-            (minX - 0.05f).coerceIn(0f, 1f),
-            (minY - 0.06f).coerceIn(0f, 1f),
-            (maxX + 0.05f).coerceIn(0f, 1f),
-            (maxY + 0.06f).coerceIn(0f, 1f)
-        )
+        val padX = if (profile.shouldProtectSkin) 0.08f else 0.055f
+        val padTop = if (profile.shouldProtectSkin) 0.10f else 0.055f
+        val padBottom = if (profile.shouldProtectSkin) 0.08f else 0.06f
+        return SubjectBounds((minX - padX).coerceIn(0f, 1f), (minY - padTop).coerceIn(0f, 1f), (maxX + padX).coerceIn(0f, 1f), (maxY + padBottom).coerceIn(0f, 1f))
+    }
+
+    private fun estimateEmptySpace(dense: DenseAnalysisMap): EmptySpaceProfile {
+        var top = 0f; var topCount = 0
+        var side = 0f; var sideCount = 0
+        for (y in 0 until dense.height) {
+            for (x in 0 until dense.width) {
+                val i = y * dense.width + x
+                val nx = x.toFloat() / (dense.width - 1).coerceAtLeast(1)
+                val ny = y.toFloat() / (dense.height - 1).coerceAtLeast(1)
+                val empty = dense.luminance[i] * dense.smoothness[i] * (1f - dense.saliency[i] * 0.75f) * (1f - dense.warmObjectLikelihood[i] * 0.85f) * (1f - dense.skinLikelihood[i] * 0.85f)
+                if (ny < 0.36f) { top += empty; topCount++ }
+                if (nx < 0.12f || nx > 0.88f) { side += empty + dense.distraction[i] * 0.35f; sideCount++ }
+            }
+        }
+        return EmptySpaceProfile((top / max(1, topCount)).coerceIn(0f, 1f), (side / max(1, sideCount)).coerceIn(0f, 1f))
+    }
+
+    private fun smoothstep(edge0: Float, edge1: Float, x: Float): Float {
+        val t = ((x - edge0) / (edge1 - edge0)).coerceIn(0f, 1f)
+        return t * t * (3f - 2f * t)
     }
 }
 
 private data class CropCandidate(val left: Float, val top: Float, val right: Float, val bottom: Float)
 private data class SubjectBounds(val left: Float, val top: Float, val right: Float, val bottom: Float)
+private data class EmptySpaceProfile(val topPressure: Float, val sidePressure: Float)
