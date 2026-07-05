@@ -7,7 +7,7 @@ Offline Android computational photography editor.
 App version inside Android project:
 
 ```text
-V1.2.3
+V1.3.0
 ```
 
 The project ZIP filename carries the package version. Do not upload old ZIP files into GitHub; extract the ZIP and upload the extracted project contents.
@@ -33,7 +33,9 @@ The project ZIP filename carries the package version. Do not upload old ZIP file
 - Dynamic scene/edit explanation
 - Multi-candidate adaptive editing engine
 - Candidate filtering, scoring, and best-pick selection
-- Better object/material candidate priority
+- Mask-based local grading renderer
+- Live staged transformation preview
+- Object/material, background, sky, green, skin, highlight/shadow local masks
 - Before/After compare
 - Conservative Auto Frame
 - Full-quality Save path up to safe export size

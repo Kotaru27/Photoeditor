@@ -56,6 +56,7 @@ import com.aiphotostudio.export.ExportEngine
 import com.aiphotostudio.imaging.PreviewBitmapDecoder
 import com.aiphotostudio.pipeline.AnalysisResult
 import com.aiphotostudio.pipeline.MultiCandidateAdaptiveEditingEngine
+import com.aiphotostudio.pipeline.LocalGradingRenderer
 import com.aiphotostudio.pipeline.RenderGraphExecutor
 import com.aiphotostudio.pipeline.RenderQualityJudge
 import com.aiphotostudio.pipeline.VisualIntelligenceAnalyzer
@@ -75,8 +76,12 @@ class MainActivity : ComponentActivity() {
                     if (uri != null) {
                         lifecycleScope.launch {
                             state = StudioUiState.Loading("Opening photo…")
-                            state = loadAndEdit(uri) { progressMessage ->
-                                state = StudioUiState.Loading(progressMessage)
+                            state = loadAndEdit(uri) { progressMessage, previewBitmap ->
+                                state = if (previewBitmap != null) {
+                                    StudioUiState.StagePreview(progressMessage, previewBitmap)
+                                } else {
+                                    StudioUiState.Loading(progressMessage)
+                                }
                             }
                         }
                     }
@@ -104,7 +109,7 @@ class MainActivity : ComponentActivity() {
                                 try {
                                     withContext(Dispatchers.Default) {
                                         val full = withContext(Dispatchers.IO) { PreviewBitmapDecoder.decodeForExport(contentResolver, ready.uri) }
-                                        val rendered = RenderGraphExecutor.render(full, ready.graph)
+                                        val rendered = LocalGradingRenderer.render(full, ready.graph)
                                         withContext(Dispatchers.IO) { ExportEngine.saveToMediaStore(contentResolver, rendered) }
                                     }
                                     state = ready.copy(status = "Saved full quality", isBusy = false)
@@ -122,7 +127,7 @@ class MainActivity : ComponentActivity() {
                                 try {
                                     val uri = withContext(Dispatchers.Default) {
                                         val full = withContext(Dispatchers.IO) { PreviewBitmapDecoder.decodeForExport(contentResolver, ready.uri) }
-                                        val rendered = RenderGraphExecutor.render(full, ready.graph)
+                                        val rendered = LocalGradingRenderer.render(full, ready.graph)
                                         withContext(Dispatchers.IO) { ExportEngine.saveToShareCache(this@MainActivity, rendered) }
                                     }
                                     state = ready.copy(status = "Ready to share", isBusy = false)
@@ -140,43 +145,54 @@ class MainActivity : ComponentActivity() {
 
     private suspend fun loadAndEdit(
         uri: Uri,
-        onProgress: suspend (String) -> Unit
+        onProgress: suspend (String, Bitmap?) -> Unit
     ): StudioUiState {
         val startedAt = System.currentTimeMillis()
         return try {
-            onProgress("Opening photo…")
+            onProgress("Opening photo…", null)
             delay(180)
 
             val original = withContext(Dispatchers.IO) { PreviewBitmapDecoder.decode(contentResolver, uri) }
 
-            onProgress("Scanning dense pixel intelligence…")
+            onProgress("Scanning dense pixel intelligence…", null)
             delay(220)
             val analysis = withContext(Dispatchers.Default) { VisualIntelligenceAnalyzer.analyze(original) }
 
-            onProgress("Understanding subject and background…")
+            onProgress("Understanding subject and background…", original)
             delay(260)
 
-            onProgress("Testing professional edit patterns…")
+            onProgress("Testing professional edit patterns…", original)
             val selection = withContext(Dispatchers.Default) { MultiCandidateAdaptiveEditingEngine.chooseBest(original, analysis) }
             val graph = selection.graph
 
-            onProgress("Choosing the best natural result…")
+            onProgress("Choosing the best natural result…", null)
             delay(260)
 
-            onProgress("Rendering final edit…")
-            val qualityResult = withContext(Dispatchers.Default) { RenderQualityJudge.renderWithSafety(original, graph) }
-            val beforePreview = withContext(Dispatchers.Default) { RenderGraphExecutor.renderOriginalFrame(original, qualityResult.graph) }
+            val beforePreview = withContext(Dispatchers.Default) { RenderGraphExecutor.renderOriginalFrame(original, graph) }
+            onProgress("Framing", beforePreview)
+            delay(220)
 
-            val elapsed = System.currentTimeMillis() - startedAt
-            if (elapsed < 1800L) {
-                onProgress("Final polish…")
-                delay(1800L - elapsed)
-            }
+            val lightStage = withContext(Dispatchers.Default) { RenderGraphExecutor.render(original, graph.copy(color = com.aiphotostudio.editgraph.ColorOperation(), detail = com.aiphotostudio.editgraph.DetailOperation(), local = com.aiphotostudio.editgraph.LocalLightOperation())) }
+            onProgress("Shaping light", lightStage)
+            delay(260)
+
+            val localStage = withContext(Dispatchers.Default) { RenderGraphExecutor.render(original, graph.copy(color = com.aiphotostudio.editgraph.ColorOperation(), detail = com.aiphotostudio.editgraph.DetailOperation())) }
+            onProgress("Enhancing subject and calming background", localStage)
+            delay(300)
+
+            val gradeStage = withContext(Dispatchers.Default) { RenderGraphExecutor.render(original, graph.copy(detail = com.aiphotostudio.editgraph.DetailOperation())) }
+            onProgress("Grading color", gradeStage)
+            delay(260)
+
+            val qualityResult = withContext(Dispatchers.Default) { RenderQualityJudge.renderWithSafety(original, graph) }
+            onProgress("Final polish", qualityResult.bitmap)
+            val finalBeforePreview = withContext(Dispatchers.Default) { RenderGraphExecutor.renderOriginalFrame(original, qualityResult.graph) }
+            delay(280)
 
             StudioUiState.Ready(
                 uri = uri,
                 original = original,
-                beforePreview = beforePreview,
+                beforePreview = finalBeforePreview,
                 edited = qualityResult.bitmap,
                 analysis = analysis,
                 graph = qualityResult.graph,
@@ -202,6 +218,7 @@ class MainActivity : ComponentActivity() {
 sealed interface StudioUiState {
     data object Empty : StudioUiState
     data class Loading(val message: String) : StudioUiState
+    data class StagePreview(val message: String, val preview: Bitmap) : StudioUiState
     data class Error(val message: String) : StudioUiState
     data class Ready(
         val uri: Uri,
@@ -261,6 +278,7 @@ private fun StudioScreen(
                     when (s) {
                         StudioUiState.Empty -> EmptyState(onOpen)
                         is StudioUiState.Loading -> LoadingState(s.message)
+                        is StudioUiState.StagePreview -> StagePreviewState(s)
                         is StudioUiState.Error -> ErrorState(s.message, onOpen)
                         is StudioUiState.Ready -> ReadyPreview(s)
                     }
@@ -279,7 +297,7 @@ private fun Header() {
             Text("AI Photo Studio", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
             Text("Offline automatic editor", color = Color(0xFF9A9A9A), fontSize = 12.sp)
         }
-        Text("V1.2.3", color = Color(0xFF696969), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+        Text("V1.3.0", color = Color(0xFF696969), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
     }
 }
 
@@ -319,6 +337,30 @@ private fun ErrorState(message: String, onOpen: () -> Unit) {
     }
 }
 
+
+@Composable
+private fun StagePreviewState(state: StudioUiState.StagePreview) {
+    Box(Modifier.fillMaxSize().background(Color.Black)) {
+        Image(
+            bitmap = state.preview.asImageBitmap(),
+            contentDescription = state.message,
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(1.dp)
+                .clip(RoundedCornerShape(24.dp)),
+            contentScale = ContentScale.Fit
+        )
+        Text(
+            state.message.uppercase(),
+            color = Color.White,
+            modifier = Modifier.align(Alignment.TopStart).padding(14.dp)
+                .background(Color(0xCC000000), RoundedCornerShape(999.dp)).padding(horizontal = 14.dp, vertical = 7.dp),
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold
+        )
+    }
+}
+
 @Composable
 private fun ReadyPreview(state: StudioUiState.Ready) {
     val bitmap = if (state.showBefore) state.beforePreview else state.edited
@@ -354,6 +396,7 @@ private fun Controls(
     when (state) {
         StudioUiState.Empty -> Unit
         is StudioUiState.Loading -> Text(state.message, color = Color(0xFF9A9A9A), modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
+        is StudioUiState.StagePreview -> Text(state.message, color = Color(0xFFD0D0D0), modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
         is StudioUiState.Error -> Unit
         is StudioUiState.Ready -> {
             Column(

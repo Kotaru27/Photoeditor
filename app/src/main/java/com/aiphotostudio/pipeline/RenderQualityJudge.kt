@@ -17,7 +17,7 @@ import kotlin.math.min
  */
 object RenderQualityJudge {
     fun renderWithSafety(source: Bitmap, graph: EditGraph): QualityRenderResult {
-        val first = RenderGraphExecutor.render(source, graph)
+        val first = LocalGradingRenderer.render(source, graph)
         val sourceStats = measure(source)
         val editedStats = measure(first)
         val report = judge(sourceStats, editedStats)
@@ -27,7 +27,7 @@ object RenderQualityJudge {
         }
 
         val saferGraph = reduceIntensity(graph, report.reductionStrength)
-        val saferBitmap = RenderGraphExecutor.render(source, saferGraph)
+        val saferBitmap = LocalGradingRenderer.render(source, saferGraph)
         val saferReport = judge(sourceStats, measure(saferBitmap)).copy(wasAutoReduced = true)
         return QualityRenderResult(saferBitmap, saferGraph, saferReport)
     }

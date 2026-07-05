@@ -27,7 +27,7 @@ object MultiCandidateAdaptiveEditingEngine {
 
         var best: CandidateResult? = null
         for (candidate in candidates) {
-            val rendered = RenderGraphExecutor.render(scoringBitmap, candidate.graph)
+            val rendered = LocalGradingRenderer.render(scoringBitmap, candidate.graph)
             val stats = CandidateStats.measure(rendered)
             val score = scoreCandidate(originalStats, stats, analysis, profile, candidate)
             val result = CandidateResult(candidate, score)
