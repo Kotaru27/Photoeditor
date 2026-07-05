@@ -14,7 +14,7 @@ object SceneUnderstandingEngine {
 
         val portrait = (a.portraitSafetyLikelihood * 0.45f + dense.skinPresence * 0.30f + region.portraitConfidence * 0.25f)
             .coerceIn(0f, 1f)
-        val objectMaterial = (a.ornateObjectLikelihood * 0.38f + dense.warmObjectPresence * 0.30f + region.ornateObjectConfidence * 0.22f + dense.averageTexture * 0.10f)
+        val objectMaterial = (a.ornateObjectLikelihood * 0.30f + dense.warmObjectPresence * 0.34f + region.ornateObjectConfidence * 0.22f + dense.averageTexture * 0.14f)
             .coerceIn(0f, 1f)
         val skyHeavy = max(a.skyLikelihood, max(dense.topSkyPressure, region.skyPressure)).coerceIn(0f, 1f)
         val nature = max(a.natureLikelihood, max(dense.greenPresence, region.greenDominance)).coerceIn(0f, 1f)
@@ -30,7 +30,7 @@ object SceneUnderstandingEngine {
 
         val dominant = when {
             portrait > 0.24f && portrait > objectMaterial * 1.15f -> SceneDominant.PERSON
-            objectMaterial > 0.18f && objectMaterial >= portrait * 0.85f -> SceneDominant.OBJECT_MATERIAL
+            objectMaterial > 0.12f && objectMaterial >= portrait * 0.62f -> SceneDominant.OBJECT_MATERIAL
             skyHeavy > 0.38f && foregroundSubject < 0.28f -> SceneDominant.SKY_LANDSCAPE
             nature > 0.34f -> SceneDominant.NATURE
             lowLight > 0.58f -> SceneDominant.LOW_LIGHT
@@ -54,8 +54,8 @@ object SceneUnderstandingEngine {
             subjectStrength = subjectStrength,
             subjectX = dense.subjectX,
             subjectY = dense.subjectY,
-            shouldProtectSkin = portrait > 0.22f && objectMaterial < 0.42f,
-            shouldEnhanceObjectMaterial = objectMaterial > 0.18f && portrait < 0.38f,
+            shouldProtectSkin = portrait > 0.26f && portrait > objectMaterial * 1.25f,
+            shouldEnhanceObjectMaterial = objectMaterial > 0.12f && objectMaterial >= portrait * 0.62f,
             shouldRecoverSky = skyHeavy > 0.25f,
             shouldCalmBackground = backgroundClutter > 0.22f || nature > 0.30f,
             shouldUseLowLightCandidate = lowLight > 0.55f,

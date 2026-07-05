@@ -223,11 +223,11 @@ object DensePixelAnalyzer {
     }
 
     private fun warmObjectLikelihood(warmth: Float, sat: Float, lum: Float, texture: Float, skin: Float): Float {
-        val warm = smoothstep(0.06f, 0.28f, warmth)
-        val satOk = smoothstep(0.08f, 0.28f, sat)
-        val lumOk = smoothstep(0.12f, 0.34f, lum) * (1f - smoothstep(0.88f, 1f, lum))
-        val material = texture * (1f - skin * 0.70f)
-        return (warm * satOk * lumOk * (0.30f + material * 0.70f)).coerceIn(0f, 1f)
+        val warm = smoothstep(0.035f, 0.22f, warmth)
+        val satOk = smoothstep(0.045f, 0.22f, sat)
+        val lumOk = smoothstep(0.10f, 0.30f, lum) * (1f - smoothstep(0.90f, 1f, lum))
+        val material = texture * (1f - skin * 0.55f)
+        return (warm * (0.55f + satOk * 0.45f) * lumOk * (0.25f + material * 0.75f)).coerceIn(0f, 1f)
     }
 
     private fun smoothstep(edge0: Float, edge1: Float, x: Float): Float {

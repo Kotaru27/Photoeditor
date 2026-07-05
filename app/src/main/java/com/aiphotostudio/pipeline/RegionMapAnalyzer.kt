@@ -115,7 +115,7 @@ object RegionMapAnalyzer {
                 if (gy <= 4 && lum > 0.48f && b >= r - 0.08f && sat < 0.34f) sky++
                 if (r > g && g > b && r - b > 0.07f && lum in 0.24f..0.88f && sat in 0.08f..0.58f) skin++
                 if (g > r + 0.04f && g > b + 0.04f && lum > 0.15f) green++
-                if (warmth > 0.09f && sat > 0.12f && lum in 0.16f..0.86f) warmObject++
+                if (warmth > 0.045f && sat > 0.055f && lum in 0.12f..0.88f) warmObject++
                 count++
                 x += stepX
             }

@@ -134,11 +134,11 @@ object MultiCandidateAdaptiveEditingEngine {
                 sharpness = (base.detail.sharpness + 0.035f).coerceIn(0f, 0.16f)
             ),
             local = base.local.copy(
-                subjectLift = (base.local.subjectLift + 0.12f).coerceIn(0f, 0.34f),
-                subjectContrast = (base.local.subjectContrast + 0.10f).coerceIn(0f, 0.26f),
-                backgroundCalm = (base.local.backgroundCalm + 0.10f).coerceIn(0f, 0.34f),
-                heroColorRichness = (base.local.heroColorRichness + 0.12f).coerceIn(0f, 0.24f),
-                centerFocus = (base.local.centerFocus + 0.10f).coerceIn(0f, 0.30f)
+                subjectLift = (base.local.subjectLift + 0.14f).coerceIn(0f, 0.34f),
+                subjectContrast = (base.local.subjectContrast + 0.12f).coerceIn(0f, 0.26f),
+                backgroundCalm = (base.local.backgroundCalm + 0.12f).coerceIn(0f, 0.34f),
+                heroColorRichness = (base.local.heroColorRichness + 0.16f).coerceIn(0f, 0.24f),
+                centerFocus = (base.local.centerFocus + 0.11f).coerceIn(0f, 0.30f)
             )
         ))
 
@@ -221,7 +221,10 @@ object MultiCandidateAdaptiveEditingEngine {
         if (filtered.none { it.name.contains("Clean", ignoreCase = true) }) {
             candidates.firstOrNull { it.name.contains("Clean", ignoreCase = true) }?.let { filtered.add(0, it) }
         }
-        if (filtered.none { it.name.contains("Subject", ignoreCase = true) } && profile.subjectStrength > 0.22f) {
+        if (profile.shouldEnhanceObjectMaterial && filtered.none { it.name.contains("object", ignoreCase = true) }) {
+            candidates.firstOrNull { it.name.contains("object", ignoreCase = true) }?.let { filtered.add(1.coerceAtMost(filtered.size), it) }
+        }
+        if (filtered.none { it.name.contains("Subject", ignoreCase = true) } && profile.subjectStrength > 0.22f && !profile.shouldEnhanceObjectMaterial) {
             candidates.firstOrNull { it.name.contains("Subject", ignoreCase = true) }?.let { filtered.add(it) }
         }
         return filtered.distinctBy { it.name }.take(5).ifEmpty { candidates.take(3) }
@@ -258,8 +261,9 @@ object MultiCandidateAdaptiveEditingEngine {
         }
 
         if (profile.shouldEnhanceObjectMaterial) {
-            if (candidate.name.contains("object", ignoreCase = true) || candidate.name.contains("Subject", ignoreCase = true)) score += 34
-            if (candidate.name.contains("human", ignoreCase = true) || candidate.name.contains("portrait", ignoreCase = true)) score -= 38
+            if (candidate.name.contains("object", ignoreCase = true)) score += 48
+            if (candidate.name.contains("Subject", ignoreCase = true)) score += 12
+            if (candidate.name.contains("human", ignoreCase = true) || candidate.name.contains("portrait", ignoreCase = true)) score -= 48
         }
 
         if (profile.shouldRecoverSky) {
@@ -269,7 +273,8 @@ object MultiCandidateAdaptiveEditingEngine {
 
         if (profile.shouldCalmBackground && edited.edgeSaturation < original.edgeSaturation) score += 18
         if (profile.subjectStrength > 0.30f && subjectGain > 0.008f) score += 16
-        if (profile.objectMaterialLikelihood > 0.25f && candidate.name.contains("object", ignoreCase = true)) score += 18
+        if (profile.objectMaterialLikelihood > 0.12f && candidate.name.contains("object", ignoreCase = true)) score += 28
+        if (profile.objectMaterialLikelihood > 0.18f && candidate.name.contains("Subject", ignoreCase = true)) score -= 8
         if (profile.portraitLikelihood > 0.26f && candidate.name.contains("human", ignoreCase = true)) score += 16
         if (profile.lowLightLikelihood > 0.55f && candidate.name.contains("Low-light", ignoreCase = true)) score += 10
 
