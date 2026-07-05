@@ -7,13 +7,20 @@ Offline Android computational photography editor.
 App version inside Android project:
 
 ```text
-V1.4.1
+V1.4.2
 ```
 
 Launcher/app name:
 
 ```text
-AI Photo Studio v1.4.1
+AI Photo Studio v1.4.2
+```
+
+GitHub APK artifact/file:
+
+```text
+AI-Photo-Studio-v1.4.2-debug-apk
+AIPhotoStudio-v1.4.2-debug.apk
 ```
 
 The project ZIP filename carries the package version. Do not upload old ZIP files into GitHub; extract the ZIP and upload the extracted project contents.
@@ -28,7 +35,7 @@ The project ZIP filename carries the package version. Do not upload old ZIP file
 - Dynamic scene/edit explanation
 - Multi-candidate adaptive editing engine
 - Candidate filtering, scoring, and best-pick selection
-- Auto Frame 2.1 with scene-specific subject bounds and empty-space scoring
+- Auto Frame 2.3 empty-band top crop detection
 - Mask-based local grading renderer
 - Live staged transformation preview
 - Before/After compare

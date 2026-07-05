@@ -6,16 +6,18 @@ import kotlin.math.max
 import kotlin.math.min
 
 /**
- * Auto Frame 2.1: decisive candidate-based composition scoring.
+ * Auto Frame 2.3: forced-safe empty top crop.
  *
- * Uses subject bounds + empty-space pressure. The goal is not a fixed crop, but a crop
- * that improves each image's composition while preserving the subject.
+ * Uses subject bounds + empty-space pressure, plus a direct top empty-band detector.
+ * The goal is not a fixed crop, but a crop that improves each image's composition
+ * while preserving the subject.
  */
 object AutoFrameEngine {
     fun plan(analysis: AnalysisResult, profile: SceneUnderstandingProfile): GeometryOperation {
         val dense = analysis.denseMap
         val bounds = estimateSubjectBounds(dense, profile)
         val empty = estimateEmptySpace(dense)
+        val emptyBand = detectEmptyTopBand(dense, bounds)
         val objectScene = profile.shouldEnhanceObjectMaterial || profile.dominant == SceneDominant.OBJECT_MATERIAL
         val portraitSafe = profile.shouldProtectSkin || profile.dominant == SceneDominant.PERSON
         val skyPressure = maxOf(profile.skyHeavyLikelihood, dense.summary.topSkyPressure, analysis.regionMap.skyPressure)
@@ -35,15 +37,28 @@ object AutoFrameEngine {
                 candidates += CropCandidate(0.035f, top, 0.965f, 1f)
             }
         }
+        if (!portraitSafe && emptyBand.found) {
+            candidates += CropCandidate(0f, emptyBand.bandEnd, 1f, 1f)
+        }
 
         val scored = candidates.map { it to scoreCandidate(it, bounds, empty, analysis, profile) }
         val originalScore = scored.first { it.first.top == 0f && it.first.left == 0f }.second
         val best = scored.maxByOrNull { it.second } ?: scored.first()
 
         val decisiveScene = (objectScene && empty.topPressure > 0.16f && bounds.top > 0.24f) ||
-            (!portraitSafe && skyPressure > 0.34f && bounds.top > 0.22f)
+            (!portraitSafe && skyPressure > 0.34f && bounds.top > 0.22f) ||
+            (!portraitSafe && emptyBand.found)
         val threshold = if (decisiveScene) 0.015f else 0.055f
-        val chosen = if (best.second > originalScore + threshold) best.first else candidates.first()
+        var chosen = if (best.second > originalScore + threshold) best.first else candidates.first()
+
+        // Forced-safe framing: if a strong empty top band was found directly and the
+        // subject sits safely below it, apply the crop even if candidate scoring hesitated.
+        if (!portraitSafe && emptyBand.found && chosen.top < emptyBand.bandEnd) {
+            val forced = CropCandidate(0f, emptyBand.bandEnd, 1f, 1f)
+            if (scoreCandidate(forced, bounds, empty, analysis, profile) > -4f) {
+                chosen = forced
+            }
+        }
 
         return GeometryOperation(
             cropLeft = chosen.left.coerceIn(0f, 0.18f),
@@ -51,6 +66,55 @@ object AutoFrameEngine {
             cropRight = chosen.right.coerceIn(0.82f, 1f),
             cropBottom = chosen.bottom.coerceIn(0.82f, 1f)
         )
+    }
+
+    /**
+     * Scans the top of the image row-by-row to find a continuous removable band that is
+     * bright, smooth, low texture, low subject, low warm-object, and low skin. This
+     * specifically targets white/gray sky, blank wall, and empty top-space failures.
+     */
+    private fun detectEmptyTopBand(dense: DenseAnalysisMap, bounds: SubjectBounds): EmptyBandResult {
+        val rowEmptyThreshold = 0.42f
+        val rowSubjectThreshold = 0.16f
+        val rowTextureThreshold = 0.30f
+        val maxBandFraction = min(0.28f, (bounds.top - 0.02f).coerceAtLeast(0f))
+        if (maxBandFraction < 0.06f) return EmptyBandResult(false, 0f)
+
+        var bandEnd = 0f
+        for (y in 0 until dense.height) {
+            val ny = y.toFloat() / (dense.height - 1).coerceAtLeast(1)
+            if (ny > maxBandFraction) break
+
+            var rowLum = 0f
+            var rowSmooth = 0f
+            var rowSubject = 0f
+            var rowTexture = 0f
+            var rowWarm = 0f
+            var rowSkin = 0f
+            for (x in 0 until dense.width) {
+                val i = y * dense.width + x
+                rowLum += dense.luminance[i]
+                rowSmooth += dense.smoothness[i]
+                rowSubject += dense.saliency[i]
+                rowTexture += dense.texture[i]
+                rowWarm += dense.warmObjectLikelihood[i]
+                rowSkin += dense.skinLikelihood[i]
+            }
+            val w = dense.width.toFloat()
+            rowLum /= w; rowSmooth /= w; rowSubject /= w; rowTexture /= w; rowWarm /= w; rowSkin /= w
+
+            val rowEmptyScore = rowLum * rowSmooth * (1f - rowSubject * 0.7f) * (1f - rowWarm * 0.8f) * (1f - rowSkin * 0.8f)
+            val rowIsEmpty = rowEmptyScore > rowEmptyThreshold &&
+                rowSubject < rowSubjectThreshold &&
+                rowTexture < rowTextureThreshold
+
+            if (rowIsEmpty) {
+                bandEnd = ny
+            } else {
+                break
+            }
+        }
+        return EmptyBandResult(bandEnd >= 0.06f, bandEnd)
     }
 
     private fun scoreCandidate(c: CropCandidate, b: SubjectBounds, e: EmptySpaceProfile, a: AnalysisResult, p: SceneUnderstandingProfile): Float {
@@ -159,3 +223,4 @@ object AutoFrameEngine {
 private data class CropCandidate(val left: Float, val top: Float, val right: Float, val bottom: Float)
 private data class SubjectBounds(val left: Float, val top: Float, val right: Float, val bottom: Float)
 private data class EmptySpaceProfile(val topPressure: Float, val sidePressure: Float)
+private data class EmptyBandResult(val found: Boolean, val bandEnd: Float)
