@@ -19,8 +19,9 @@ import kotlin.math.min
  */
 object MultiCandidateAdaptiveEditingEngine {
     fun chooseBest(source: Bitmap, analysis: AnalysisResult): CandidateSelectionResult {
+        val profile = SceneUnderstandingEngine.build(analysis)
         val base = ProfessionalEditingPlanner.plan(analysis)
-        val candidates = generateCandidates(base, analysis)
+        val candidates = generateCandidates(base, analysis, profile)
         val scoringBitmap = downscaleForScoring(source)
         val originalStats = CandidateStats.measure(scoringBitmap)
 
@@ -28,7 +29,7 @@ object MultiCandidateAdaptiveEditingEngine {
         for (candidate in candidates) {
             val rendered = RenderGraphExecutor.render(scoringBitmap, candidate.graph)
             val stats = CandidateStats.measure(rendered)
-            val score = scoreCandidate(originalStats, stats, analysis, candidate)
+            val score = scoreCandidate(originalStats, stats, analysis, profile, candidate)
             val result = CandidateResult(candidate, score)
             if (best == null || result.score > best.score) best = result
         }
@@ -45,7 +46,7 @@ object MultiCandidateAdaptiveEditingEngine {
         )
     }
 
-    private fun generateCandidates(base: EditGraph, a: AnalysisResult): List<Candidate> {
+    private fun generateCandidates(base: EditGraph, a: AnalysisResult, profile: SceneUnderstandingProfile): List<Candidate> {
         val list = mutableListOf<Candidate>()
         list += Candidate("Clean natural grade", base.scaleCreative(0.72f).copy(
             professionalIntent = "Clean natural grade",
@@ -202,10 +203,31 @@ object MultiCandidateAdaptiveEditingEngine {
             ))
         }
 
-        return list
+        return filterCandidates(list, profile)
     }
 
-    private fun scoreCandidate(original: CandidateStats, edited: CandidateStats, a: AnalysisResult, candidate: Candidate): Int {
+    private fun filterCandidates(candidates: List<Candidate>, profile: SceneUnderstandingProfile): List<Candidate> {
+        val filtered = candidates.filter { candidate ->
+            val name = candidate.name.lowercase()
+            when {
+                name.contains("human") -> profile.shouldProtectSkin || profile.dominant == SceneDominant.PERSON
+                name.contains("object") -> profile.shouldEnhanceObjectMaterial || profile.dominant == SceneDominant.OBJECT_MATERIAL
+                name.contains("sky") || name.contains("atmospheric") -> profile.shouldRecoverSky || profile.dominant == SceneDominant.SKY_LANDSCAPE
+                name.contains("low-light") -> profile.shouldUseLowLightCandidate || profile.dominant == SceneDominant.LOW_LIGHT
+                else -> true
+            }
+        }.toMutableList()
+
+        if (filtered.none { it.name.contains("Clean", ignoreCase = true) }) {
+            candidates.firstOrNull { it.name.contains("Clean", ignoreCase = true) }?.let { filtered.add(0, it) }
+        }
+        if (filtered.none { it.name.contains("Subject", ignoreCase = true) } && profile.subjectStrength > 0.22f) {
+            candidates.firstOrNull { it.name.contains("Subject", ignoreCase = true) }?.let { filtered.add(it) }
+        }
+        return filtered.distinctBy { it.name }.take(5).ifEmpty { candidates.take(3) }
+    }
+
+    private fun scoreCandidate(original: CandidateStats, edited: CandidateStats, a: AnalysisResult, profile: SceneUnderstandingProfile, candidate: Candidate): Int {
         var score = 100
 
         val changeStrength = abs(edited.averageLum - original.averageLum) + abs(edited.saturation - original.saturation) + abs(edited.localContrast - original.localContrast)
@@ -227,29 +249,29 @@ object MultiCandidateAdaptiveEditingEngine {
         score += (subjectGain * 115f).toInt()
         score += (backgroundGain * 70f).toInt()
 
-        if (a.portraitSafetyLikelihood > 0.24f) {
-            if (candidate.name.contains("human", ignoreCase = true) || candidate.name.contains("portrait", ignoreCase = true)) score += 26
-            if (candidate.name.contains("object", ignoreCase = true)) score -= 28
-            if (edited.skinHot > original.skinHot + 0.02f) score -= 24
+        if (profile.shouldProtectSkin) {
+            if (candidate.name.contains("human", ignoreCase = true) || candidate.name.contains("portrait", ignoreCase = true)) score += 34
+            if (candidate.name.contains("object", ignoreCase = true)) score -= 34
+            if (edited.skinHot > original.skinHot + 0.02f) score -= 28
+        } else if (candidate.name.contains("human", ignoreCase = true)) {
+            score -= 22
         }
 
-        if (a.ornateObjectLikelihood > 0.22f && a.portraitSafetyLikelihood < 0.30f) {
-            if (candidate.name.contains("object", ignoreCase = true) || candidate.name.contains("Subject", ignoreCase = true)) score += 28
-            if (candidate.name.contains("human", ignoreCase = true) || candidate.name.contains("portrait", ignoreCase = true)) score -= 32
+        if (profile.shouldEnhanceObjectMaterial) {
+            if (candidate.name.contains("object", ignoreCase = true) || candidate.name.contains("Subject", ignoreCase = true)) score += 34
+            if (candidate.name.contains("human", ignoreCase = true) || candidate.name.contains("portrait", ignoreCase = true)) score -= 38
         }
 
-        if (a.skyLikelihood > 0.35f) {
-            if (candidate.name.contains("sky", ignoreCase = true) || candidate.name.contains("Atmospheric", ignoreCase = true)) score += 12
-            if (edited.topHot < original.topHot) score += 8
+        if (profile.shouldRecoverSky) {
+            if (candidate.name.contains("sky", ignoreCase = true) || candidate.name.contains("Atmospheric", ignoreCase = true)) score += 16
+            if (edited.topHot < original.topHot) score += 10
         }
 
-        val dense = a.denseMap.summary
-        if ((a.backgroundDistraction > 0.38f || a.regionMap.edgeDistraction > 0.28f || dense.edgeDistraction > 0.24f) && edited.edgeSaturation < original.edgeSaturation) score += 16
-        if (maxOf(a.regionMap.centerSaliency, dense.centerSaliency) > 0.34f && subjectGain > 0.008f) score += 12
-        if (maxOf(a.regionMap.skyPressure, dense.topSkyPressure) > 0.30f && candidate.name.contains("sky", ignoreCase = true)) score += 12
-        if (maxOf(a.regionMap.ornateObjectConfidence, dense.warmObjectPresence) > 0.25f && candidate.name.contains("object", ignoreCase = true)) score += 18
-        if (maxOf(a.regionMap.portraitConfidence, dense.skinPresence) > 0.22f && candidate.name.contains("human", ignoreCase = true)) score += 14
-        if (a.noiseEstimate > 0.45f && candidate.name.contains("Low-light", ignoreCase = true)) score += 8
+        if (profile.shouldCalmBackground && edited.edgeSaturation < original.edgeSaturation) score += 18
+        if (profile.subjectStrength > 0.30f && subjectGain > 0.008f) score += 16
+        if (profile.objectMaterialLikelihood > 0.25f && candidate.name.contains("object", ignoreCase = true)) score += 18
+        if (profile.portraitLikelihood > 0.26f && candidate.name.contains("human", ignoreCase = true)) score += 16
+        if (profile.lowLightLikelihood > 0.55f && candidate.name.contains("Low-light", ignoreCase = true)) score += 10
 
         return score.coerceIn(0, 160)
     }

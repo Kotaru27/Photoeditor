@@ -1151,3 +1151,374 @@ Analyze image deeply
 Still no generative AI.
 Still no hallucination.
 Still no manual editing burden.
+
+---
+
+# 15. Scene Understanding Requirements
+
+Date added: 2026-07-05
+
+## 15.1 Important clarification
+
+The app should not merely label the image as:
+
+```text
+portrait
+landscape
+object
+food
+sky
+```
+
+That is too shallow and can lead to wrong edit choices.
+
+The app must build a deeper understanding of the entire image situation:
+
+```text
+scene + subject + background + lighting + color mood + composition + risks + opportunities
+```
+
+The goal is not to name objects like a generative AI model.
+
+The goal is to understand enough about the real image to edit it correctly.
+
+---
+
+## 15.2 Dense pixel-level analysis
+
+The app should analyze a downscaled analysis bitmap at dense pixel level.
+
+Required dense maps:
+
+- luminance
+- saturation/chroma
+- warmth/hue bias
+- edge/detail
+- texture
+- smoothness
+- highlight
+- shadow
+- skin likelihood
+- sky likelihood
+- green likelihood
+- warm-object/material likelihood
+- saliency/attention
+- distraction
+
+Solution:
+
+```text
+Use DenseAnalysisMap as the base intelligence layer.
+```
+
+---
+
+## 15.3 Region-level scene structure
+
+The app should understand spatial regions:
+
+- top
+- bottom
+- center
+- edges
+- corners
+- foreground
+- background
+- subject area
+- sky area
+- shadow area
+- highlight area
+- texture area
+- distraction area
+
+Solution:
+
+```text
+Use RegionMap + DenseAnalysisMap together.
+```
+
+---
+
+## 15.4 Subject understanding
+
+The app should estimate:
+
+- likely subject position
+- subject strength
+- whether subject is detailed or smooth
+- whether subject is too dark/bright
+- whether subject is separated from background
+- whether subject needs lift, detail, softness, or protection
+
+Solution:
+
+```text
+Use saliency, center/foreground bias, edge/detail density, contrast separation, color separation, and local brightness.
+```
+
+---
+
+## 15.5 Background understanding
+
+The app should estimate:
+
+- background distraction
+- background brightness
+- background saturation
+- clutter/line/edge pressure
+- whether background should be calmed
+- whether background atmosphere should be preserved
+
+Solution:
+
+```text
+Use distraction maps, edge-zone analysis, saturation maps, texture maps, and subject-background separation.
+```
+
+---
+
+## 15.6 SceneUnderstandingProfile
+
+The app should produce a structured scene profile.
+
+It should estimate weighted properties such as:
+
+- indoor likelihood
+- outdoor likelihood
+- sky-heavy scene
+- greenery/nature-heavy scene
+- object/product-like scene
+- person/portrait-like scene
+- food/warm material-like scene
+- low-light scene
+- high-key bright scene
+- backlit subject
+- flat/dull lighting
+- dramatic contrast scene
+- cluttered background
+- foreground object scene
+- social/post-worthy composition risk/opportunity
+
+Important:
+
+This profile should not force a fixed preset.
+
+It should guide candidate generation, candidate filtering, scoring, and local protections.
+
+---
+
+## 15.7 Image contents understanding
+
+The app should understand likely content regions at a practical non-generative level:
+
+- person/skin-like region
+- object/material region
+- sky region
+- greenery region
+- building/structure-like region
+- food/warm material-like region
+- water/blue/cool region if possible
+- text/document-like region if possible
+- pet/animal-like region later if offline models are added
+
+Solution:
+
+```text
+Use non-generative computer vision features: color maps, texture maps, edge maps, smoothness maps, saliency maps, connected-region behavior, and optional future offline detectors.
+```
+
+---
+
+## 15.8 Lighting understanding
+
+The app should understand:
+
+- overexposed sky/highlights
+- underexposed subject
+- harsh light
+- soft light
+- low-light/noisy scene
+- flat lighting
+- backlit scene
+- strong dynamic range
+- dull midtones
+
+Solution:
+
+```text
+Use luminance distribution, highlight/shadow maps, top/bottom brightness, subject/background brightness difference, and local contrast.
+```
+
+---
+
+## 15.9 Color mood understanding
+
+The app should understand:
+
+- warm mood
+- cool mood
+- green-heavy scene
+- washed-out colors
+- over-saturated colors
+- bad color cast
+- skin/warm tone risk
+- brass/gold/warm object richness opportunity
+- sky color opportunity
+- background color distraction
+
+Solution:
+
+```text
+Use hue/warmth maps, saturation maps, color-family likelihoods, skin/object/green/sky maps.
+```
+
+---
+
+## 15.10 Composition understanding
+
+The app should understand:
+
+- subject placement
+- empty top/side space
+- distracting edges
+- subject too low/high
+- strong lines/railings
+- clutter around subject
+- whether a conservative crop improves image
+- whether original framing should be preserved
+
+Solution:
+
+```text
+Use saliency map, distraction map, edge analysis, empty-space pressure, and Auto Frame confidence.
+```
+
+---
+
+## 15.11 Candidate edit suitability
+
+The app should not generate candidates blindly.
+
+For each candidate, it should know:
+
+- why this candidate might fit
+- what image problem it solves
+- what risks it has
+- whether it matches the scene profile
+- whether it improves subject/background relationship
+
+Solution:
+
+```text
+Use SceneUnderstandingProfile to filter and weight candidate edits before rendering/scoring.
+```
+
+---
+
+## 15.12 Multi-candidate best-pick system based on scene understanding
+
+Candidate generation should depend on the scene profile.
+
+Examples:
+
+### Foreground object scene
+
+Generate:
+
+- clean natural
+- subject depth
+- rich object detail
+- muted background
+- sky recovery if needed
+
+Avoid:
+
+- soft human-safe unless portrait safety is genuinely high
+
+### Portrait-like scene
+
+Generate:
+
+- clean natural
+- soft human-safe
+- subject depth with skin protection
+- muted background
+
+Avoid:
+
+- aggressive object/material detail
+
+### Sky/landscape scene
+
+Generate:
+
+- atmospheric sky
+- foreground depth
+- natural color depth
+- clean natural
+
+Avoid:
+
+- portrait-safe or object-heavy candidates unless strong foreground subject exists
+
+---
+
+## 15.13 Avoid shallow labels
+
+The app should not internally think:
+
+```text
+this is portrait, apply portrait preset
+```
+
+It should think:
+
+```text
+subject is likely foreground warm detailed object
+background is green and distracting
+top sky is bright
+foreground has important texture
+skin-like hand region exists but is not dominant
+best edit should enrich object, calm background, recover sky, protect hand
+```
+
+That is the desired level of image understanding.
+
+---
+
+## 15.14 Updated next implementation direction
+
+Next recommended implementation:
+
+```text
+v1.2.1 SceneUnderstandingProfile + Candidate Filtering
+```
+
+Goals:
+
+1. Build SceneUnderstandingProfile from DenseAnalysisMap + RegionMap + global analysis.
+2. Estimate scene, subject, background, lighting, color mood, composition, risks, and opportunities.
+3. Filter irrelevant candidates before rendering.
+4. Prevent human-safe candidate on object/material images.
+5. Prevent aggressive object candidate on true portraits.
+6. Boost candidates that match the scene profile.
+7. Improve candidate scoring using scene needs.
+8. Reduce lag by not testing irrelevant candidates.
+
+---
+
+## 15.15 Updated principle
+
+The app should understand:
+
+```text
+what the image situation is
+```
+
+not merely:
+
+```text
+what category the image belongs to
+```
+
+This is required for reliable automatic editing across many image types.
