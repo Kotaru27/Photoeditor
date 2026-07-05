@@ -35,12 +35,14 @@ object MultiCandidateAdaptiveEditingEngine {
         }
 
         val selected = best ?: CandidateResult(Candidate("Balanced professional edit", base), 0)
+        val explanation = EditExplanationBuilder.build(profile, selected.candidate.name)
         return CandidateSelectionResult(
             graph = selected.candidate.graph.copy(
                 professionalIntent = selected.candidate.name,
-                intentReason = "Analyzed the image, tested multiple professional edit patterns, and selected the strongest natural result."
+                intentReason = explanation.shortSummary
             ),
             candidateName = selected.candidate.name,
+            explanation = explanation,
             score = selected.score,
             candidateCount = candidates.size
         )
@@ -295,6 +297,7 @@ object MultiCandidateAdaptiveEditingEngine {
 data class CandidateSelectionResult(
     val graph: EditGraph,
     val candidateName: String,
+    val explanation: EditDecisionSummary,
     val score: Int,
     val candidateCount: Int
 )

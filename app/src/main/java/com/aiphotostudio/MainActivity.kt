@@ -181,7 +181,7 @@ class MainActivity : ComponentActivity() {
                 analysis = analysis,
                 graph = qualityResult.graph,
                 showBefore = false,
-                status = "Tested ${selection.candidateCount} edits and chose best",
+                status = "Tested ${selection.candidateCount} edits · ${selection.candidateName}",
                 isBusy = false
             )
         } catch (t: Throwable) {
@@ -279,7 +279,7 @@ private fun Header() {
             Text("AI Photo Studio", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
             Text("Offline automatic editor", color = Color(0xFF9A9A9A), fontSize = 12.sp)
         }
-        Text("V1.2.2", color = Color(0xFF696969), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+        Text("V1.2.3", color = Color(0xFF696969), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
     }
 }
 
@@ -365,7 +365,7 @@ private fun Controls(
             ) {
                 Text("Professional edit applied", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Spacer(Modifier.height(3.dp))
-                Text(state.graph.professionalIntent, color = Color(0xFF8E8E8E), fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(state.graph.intentReason, color = Color(0xFF8E8E8E), fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Spacer(Modifier.height(6.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text(state.status, color = Color(0xFFB0B0B0), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)

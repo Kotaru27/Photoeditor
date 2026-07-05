@@ -7,7 +7,7 @@ Offline Android computational photography editor.
 App version inside Android project:
 
 ```text
-V1.2.2
+V1.2.3
 ```
 
 The project ZIP filename carries the package version. Do not upload old ZIP files into GitHub; extract the ZIP and upload the extracted project contents.
@@ -30,6 +30,7 @@ The project ZIP filename carries the package version. Do not upload old ZIP file
 - Dense Pixel Intelligence Layer
 - RegionMap analysis
 - SceneUnderstandingProfile
+- Dynamic scene/edit explanation
 - Multi-candidate adaptive editing engine
 - Candidate filtering, scoring, and best-pick selection
 - Better object/material candidate priority
