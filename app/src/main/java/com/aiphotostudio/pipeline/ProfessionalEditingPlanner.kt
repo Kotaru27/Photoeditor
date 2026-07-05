@@ -103,13 +103,17 @@ object ProfessionalEditingPlanner {
             else -> 0.02f
         } + recipe.dehazeBias
 
+        val emptyTop = maxOf(result.regionMap.emptyTopPressure, result.denseMap.summary.emptyTopPressure)
+        val subjectLow = result.denseMap.summary.subjectY > 0.54f
+        val objectScene = result.ornateObjectLikelihood > 0.16f || result.denseMap.summary.warmObjectPresence > 0.12f
         val autoFrameTop = when {
             result.portraitSafetyLikelihood > 0.24f && result.ornateObjectLikelihood < 0.42f -> 0f
-            result.foregroundHeroLikelihood > 0.12f && maxOf(result.regionMap.emptyTopPressure, result.denseMap.summary.emptyTopPressure) > 0.30f -> 0.060f
-            result.skyLikelihood > 0.45f && maxOf(result.regionMap.emptyTopPressure, result.denseMap.summary.emptyTopPressure) > 0.34f -> 0.045f
+            objectScene && emptyTop > 0.26f && subjectLow -> 0.105f
+            result.foregroundHeroLikelihood > 0.12f && emptyTop > 0.30f -> 0.080f
+            result.skyLikelihood > 0.45f && emptyTop > 0.34f -> 0.055f
             else -> 0f
         }
-        val autoFrameSide = if (result.portraitSafetyLikelihood < 0.24f && result.foregroundHeroLikelihood > 0.22f && result.backgroundDistraction > 0.38f) 0.014f else 0f
+        val autoFrameSide = if (result.portraitSafetyLikelihood < 0.24f && result.foregroundHeroLikelihood > 0.22f && result.backgroundDistraction > 0.38f) 0.018f else 0f
 
         // Universal adaptive goals: recipes are only hints; these cross-image goals shape every photo.
         val dense = result.denseMap.summary

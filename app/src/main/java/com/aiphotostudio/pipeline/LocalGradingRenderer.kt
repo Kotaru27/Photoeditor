@@ -52,10 +52,10 @@ object LocalGradingRenderer {
 
                 // Sky/highlight rolloff: reduce dominance smoothly without patchy gray artifacts.
                 if (skyMask > 0.001f) {
-                    val amount = skyMask * (0.10f + highlight * 0.08f)
-                    r -= amount * 0.10f
-                    g -= amount * 0.10f
-                    b -= amount * 0.08f
+                    val amount = skyMask * (0.14f + highlight * 0.11f)
+                    r -= amount * 0.13f
+                    g -= amount * 0.13f
+                    b -= amount * 0.10f
                     val lum = luminance(r, g, b)
                     val soft = smoothstep(0.58f, 0.95f, lum) * skyMask
                     r = mix(r, lum, soft * 0.10f)
@@ -66,38 +66,38 @@ object LocalGradingRenderer {
                 // Background calming: lower color/contrast/luminance on distractions and active greens.
                 if (backgroundMask > 0.001f) {
                     val lum = luminance(r, g, b)
-                    val calm = backgroundMask * 0.22f
+                    val calm = backgroundMask * 0.34f
                     r = lum + (r - lum) * (1f - calm)
                     g = lum + (g - lum) * (1f - calm)
                     b = lum + (b - lum) * (1f - calm)
-                    r -= backgroundMask * 0.025f
-                    g -= backgroundMask * 0.025f
-                    b -= backgroundMask * 0.025f
+                    r -= backgroundMask * 0.045f
+                    g -= backgroundMask * 0.045f
+                    b -= backgroundMask * 0.045f
                 }
 
                 // Green control: reduce neon/active greens, keep natural vegetation feeling.
                 if (greenMask > 0.001f) {
                     val lum = luminance(r, g, b)
-                    val amt = greenMask * 0.18f
-                    g = mix(g, lum, amt * 0.45f)
-                    r = mix(r, lum, amt * 0.10f)
-                    b = mix(b, lum, amt * 0.10f)
-                    g -= amt * 0.018f
+                    val amt = greenMask * 0.28f
+                    g = mix(g, lum, amt * 0.55f)
+                    r = mix(r, lum, amt * 0.14f)
+                    b = mix(b, lum, amt * 0.14f)
+                    g -= amt * 0.026f
                 }
 
                 // Warm material/object grading: richer depth and texture without fake yellowing.
                 if (objectMask > 0.001f) {
                     val lum = luminance(r, g, b)
-                    val detail = objectMask * (0.18f + texture * 0.16f)
+                    val detail = objectMask * (0.28f + texture * 0.24f)
                     r = ((r - 0.48f) * (1f + detail) + 0.48f)
-                    g = ((g - 0.48f) * (1f + detail * 0.85f) + 0.48f)
-                    b = ((b - 0.48f) * (1f + detail * 0.55f) + 0.48f)
-                    val rich = objectMask * (1f - highlight * 0.45f) * 0.055f
-                    r += rich * 0.70f
-                    g += rich * 0.38f
-                    b -= rich * 0.20f
-                    // Keep material depth by gently darkening deepest object texture.
-                    val deepen = objectMask * shadow * 0.035f
+                    g = ((g - 0.48f) * (1f + detail * 0.88f) + 0.48f)
+                    b = ((b - 0.48f) * (1f + detail * 0.58f) + 0.48f)
+                    val rich = objectMask * (1f - highlight * 0.50f) * 0.080f
+                    r += rich * 0.72f
+                    g += rich * 0.40f
+                    b -= rich * 0.22f
+                    // Keep material depth by darkening deepest object texture.
+                    val deepen = objectMask * shadow * 0.055f
                     r -= deepen; g -= deepen; b -= deepen
                     // Prevent flat yellow clipping on bright base areas.
                     val hot = objectMask * highlight * 0.055f
@@ -109,7 +109,7 @@ object LocalGradingRenderer {
                 if (subjectMask > 0.001f) {
                     val lum = luminance(r, g, b)
                     val mid = (1f - abs(lum - 0.50f) * 2f).coerceIn(0f, 1f)
-                    val lift = subjectMask * mid * (1f - skinMask * 0.55f) * 0.040f
+                    val lift = subjectMask * mid * (1f - skinMask * 0.55f) * 0.060f
                     r += lift; g += lift; b += lift
                 }
 

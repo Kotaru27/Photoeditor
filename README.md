@@ -7,7 +7,7 @@ Offline Android computational photography editor.
 App version inside Android project:
 
 ```text
-V1.3.0
+V1.3.1
 ```
 
 The project ZIP filename carries the package version. Do not upload old ZIP files into GitHub; extract the ZIP and upload the extracted project contents.
@@ -34,25 +34,10 @@ The project ZIP filename carries the package version. Do not upload old ZIP file
 - Multi-candidate adaptive editing engine
 - Candidate filtering, scoring, and best-pick selection
 - Mask-based local grading renderer
+- Stronger Auto Frame calibration
+- Stronger object/background/sky/green local grading
 - Live staged transformation preview
-- Object/material, background, sky, green, skin, highlight/shadow local masks
 - Before/After compare
-- Conservative Auto Frame
 - Full-quality Save path up to safe export size
 - Share via FileProvider cache
 - MediaStore saving
-
-## Build APK with GitHub Actions
-
-After uploading extracted project files to GitHub:
-
-1. Open the repository.
-2. Go to **Actions**.
-3. Run **Build Debug APK**.
-4. Download artifact:
-
-```text
-AI-Photo-Studio-debug-apk
-```
-
-Install the APK on your phone.

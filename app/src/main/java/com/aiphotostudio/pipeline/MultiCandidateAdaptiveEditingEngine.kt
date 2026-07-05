@@ -236,7 +236,7 @@ object MultiCandidateAdaptiveEditingEngine {
         var score = 100
 
         val changeStrength = abs(edited.averageLum - original.averageLum) + abs(edited.saturation - original.saturation) + abs(edited.localContrast - original.localContrast)
-        if (changeStrength < 0.035f) score -= 28
+        if (changeStrength < 0.035f) score -= 38
         if (changeStrength > 0.42f) score -= 14
 
         if (edited.highlightClip > max(0.055f, original.highlightClip + 0.035f)) score -= 30
@@ -249,10 +249,13 @@ object MultiCandidateAdaptiveEditingEngine {
         val subjectGain = edited.centerSeparation - original.centerSeparation
         val backgroundGain = original.edgeSaturation - edited.edgeSaturation
         if (abs(edited.saturation - original.saturation) > 0.05f && subjectGain < 0.012f && backgroundGain < 0.012f) {
-            score -= 18
+            score -= 24
         }
-        score += (subjectGain * 115f).toInt()
-        score += (backgroundGain * 70f).toInt()
+        if (subjectGain < 0.006f && backgroundGain < 0.006f && changeStrength < 0.08f) {
+            score -= 20
+        }
+        score += (subjectGain * 150f).toInt()
+        score += (backgroundGain * 95f).toInt()
 
         if (profile.shouldProtectSkin) {
             if (candidate.name.contains("human", ignoreCase = true) || candidate.name.contains("portrait", ignoreCase = true)) score += 34

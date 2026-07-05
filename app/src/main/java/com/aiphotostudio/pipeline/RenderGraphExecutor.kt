@@ -194,7 +194,7 @@ object RenderGraphExecutor {
 
     private fun applyGeometry(bitmap: Bitmap, graph: EditGraph): Bitmap {
         val left = (graph.geometry.cropLeft.coerceIn(0f, 0.25f) * bitmap.width).toInt()
-        val top = (graph.geometry.cropTop.coerceIn(0f, 0.25f) * bitmap.height).toInt()
+        val top = (graph.geometry.cropTop.coerceIn(0f, 0.32f) * bitmap.height).toInt()
         val right = (graph.geometry.cropRight.coerceIn(0.75f, 1f) * bitmap.width).toInt()
         val bottom = (graph.geometry.cropBottom.coerceIn(0.75f, 1f) * bitmap.height).toInt()
         val cropWidth = (right - left).coerceAtLeast(bitmap.width / 2)
