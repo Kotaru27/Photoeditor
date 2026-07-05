@@ -11,8 +11,8 @@ android {
         applicationId = "com.aiphotostudio"
         minSdk = 29
         targetSdk = 35
-        versionCode = 145
-        versionName = "1.4.5"
+        versionCode = 142
+        versionName = "1.4.2"
     }
 
     buildFeatures {

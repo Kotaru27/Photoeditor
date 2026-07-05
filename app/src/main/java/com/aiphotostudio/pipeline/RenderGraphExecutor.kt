@@ -13,22 +13,12 @@ import kotlin.math.pow
  * All output pixels are transformed from the original photograph using deterministic photographic math.
  */
 object RenderGraphExecutor {
-    /**
-     * v1.4.5: Compose (crop) now happens FIRST, before tone/color/local-light shaping,
-     * matching the senior-editor sequence Compose -> Correct -> Shape Light -> Grade Color.
-     * Previously the crop was applied last, so every local mask (subject/background/sky/
-     * foreground/edge/vignette) was computed against the pre-crop frame -- meaning a pixel
-     * that ends up at the very top edge of a cropped photo was still being shaped as if it
-     * were still deep inside the original, uncropped frame. That silently mis-targets local
-     * light shaping on every photo where Auto Frame actually crops.
-     */
     fun render(source: Bitmap, graph: EditGraph): Bitmap {
-        val composed = applyGeometry(source, graph)
-        val width = composed.width
-        val height = composed.height
+        val width = source.width
+        val height = source.height
         val out = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         val pixels = IntArray(width * height)
-        composed.getPixels(pixels, 0, width, 0, 0, width, height)
+        source.getPixels(pixels, 0, width, 0, 0, width, height)
 
         val exposureMul = 2.0.pow(graph.tone.exposure.toDouble()).toFloat()
         val contrast = graph.tone.contrast.coerceIn(-0.5f, 0.5f)
@@ -192,7 +182,7 @@ object RenderGraphExecutor {
 
         val detailed = applyDetailPass(pixels, width, height, graph)
         out.setPixels(detailed, 0, width, 0, 0, width, height)
-        return out
+        return applyGeometry(out, graph)
     }
 
     /**
