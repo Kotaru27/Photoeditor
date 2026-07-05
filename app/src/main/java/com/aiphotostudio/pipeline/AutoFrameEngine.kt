@@ -55,17 +55,39 @@ object AutoFrameEngine {
         // the subject is safely below it, apply the crop directly instead of letting
         // scoring hesitate. This targets the repeated failure where white/gray sky
         // stayed in the image.
+        //
+        // v1.4.4: if there is still safe headroom between the detected band and the
+        // subject, extend the crop toward that headroom (directTop boost) instead of
+        // stopping exactly at the raw band edge, so large empty areas are not
+        // under-cropped (e.g. detector finds 10% but the image needs 20-25%).
         if (!portraitSafe && emptyBand.found && chosen.top < emptyBand.bandEnd) {
-            val forced = CropCandidate(0f, emptyBand.bandEnd, 1f, 1f)
             val subjectSafeBelowBand = bounds.top >= emptyBand.bandEnd + 0.02f
-            if (subjectSafeBelowBand && scoreCandidate(forced, bounds, empty, analysis, profile) > -6f) {
-                chosen = forced
+            if (subjectSafeBelowBand) {
+                val safeHeadroom = (bounds.top - 0.03f).coerceAtLeast(emptyBand.bandEnd)
+                val boostedTop = min(emptyBand.bandEnd * 1.25f, safeHeadroom)
+                var forced = CropCandidate(0f, boostedTop, 1f, 1f)
+                if (scoreCandidate(forced, bounds, empty, analysis, profile) <= -6f) {
+                    forced = CropCandidate(0f, emptyBand.bandEnd, 1f, 1f)
+                }
+                if (scoreCandidate(forced, bounds, empty, analysis, profile) > -6f) {
+                    chosen = forced
+                }
             }
+        }
+
+        // v1.4.4: stronger portrait protection. If skin presence is high and the subject sits
+        // in the upper part of the frame (head/hair region), cap the top crop hard at 8% even
+        // if portrait detection elsewhere was borderline, to avoid ever cutting head/hair.
+        val strongPortraitRisk = dense.summary.skinPresence > 0.16f && subjectCenterY < 0.46f
+        val topCap = when {
+            portraitSafe -> 0.10f
+            strongPortraitRisk -> 0.08f
+            else -> 0.30f
         }
 
         return GeometryOperation(
             cropLeft = chosen.left.coerceIn(0f, 0.18f),
-            cropTop = chosen.top.coerceIn(0f, if (portraitSafe) 0.10f else 0.30f),
+            cropTop = chosen.top.coerceIn(0f, topCap),
             cropRight = chosen.right.coerceIn(0.82f, 1f),
             cropBottom = chosen.bottom.coerceIn(0.82f, 1f)
         )
@@ -77,11 +99,11 @@ object AutoFrameEngine {
      * specifically targets white/gray sky, blank wall, and empty top-space failures.
      */
     private fun detectEmptyTopBand(dense: DenseAnalysisMap, bounds: SubjectBounds): EmptyBandResult {
-        // v1.4.3: relaxed thresholds so faint wires/cloud texture/compression noise
-        // do not prevent top empty-space detection as easily.
-        val rowEmptyThreshold = 0.34f
-        val rowSubjectThreshold = 0.22f
-        val rowTextureThreshold = 0.40f
+        // v1.4.4: relaxed further so compression noise, faint wires, slight gradients,
+        // and cloud texture do not stop empty-band detection too early.
+        val rowEmptyThreshold = 0.28f
+        val rowSubjectThreshold = 0.24f
+        val rowTextureThreshold = 0.38f
         val maxBandFraction = min(0.28f, (bounds.top - 0.02f).coerceAtLeast(0f))
         if (maxBandFraction < 0.06f) return EmptyBandResult(false, 0f)
 
@@ -170,7 +192,10 @@ object AutoFrameEngine {
                 val portraitTerm = dense.skinLikelihood[i] * (0.65f + dense.saliency[i] * 0.35f)
                 val generic = dense.saliency[i] * (1f - dense.skyLikelihood[i] * 0.95f) * (1f - dense.distraction[i] * 0.30f)
                 val w = when {
-                    profile.shouldEnhanceObjectMaterial -> objectTerm * 0.55f + generic * 0.35f + foreground * 0.10f
+                    // v1.4.4: object/material scenes weight objectTerm much more heavily so
+                    // salient-but-irrelevant background (trees/buildings/railings) does not
+                    // widen subject bounds and block crops.
+                    profile.shouldEnhanceObjectMaterial -> objectTerm * 0.75f + generic * 0.15f + foreground * 0.10f
                     profile.shouldProtectSkin -> portraitTerm * 0.55f + generic * 0.35f + foreground * 0.10f
                     else -> generic * 0.75f + objectTerm * 0.15f + portraitTerm * 0.10f
                 }.coerceIn(0f, 1f)

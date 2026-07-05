@@ -35,7 +35,7 @@ object MultiCandidateAdaptiveEditingEngine {
         }
 
         val selected = best ?: CandidateResult(Candidate("Balanced professional edit", base), 0)
-        val explanation = EditExplanationBuilder.build(profile, selected.candidate.name)
+        val explanation = EditExplanationBuilder.build(profile, selected.candidate.name, selected.candidate.graph.geometry)
         return CandidateSelectionResult(
             graph = selected.candidate.graph.copy(
                 professionalIntent = selected.candidate.name,

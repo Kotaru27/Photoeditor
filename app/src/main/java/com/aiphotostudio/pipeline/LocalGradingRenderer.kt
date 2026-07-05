@@ -51,16 +51,19 @@ object LocalGradingRenderer {
                 val skinMask = skin.coerceIn(0f, 1f)
 
                 // Sky/highlight rolloff: reduce dominance smoothly without patchy gray artifacts.
+                // v1.4.4: reduced flat RGB subtraction (was making pushed sky look dull/gray)
+                // in favor of the safer luminance-based softening. Full perceptual highlight
+                // rolloff is planned as PerceptualColorGradeEngine in v1.5.0.
                 if (skyMask > 0.001f) {
                     val amount = skyMask * (0.14f + highlight * 0.11f)
-                    r -= amount * 0.13f
-                    g -= amount * 0.13f
-                    b -= amount * 0.10f
+                    r -= amount * 0.08f
+                    g -= amount * 0.08f
+                    b -= amount * 0.06f
                     val lum = luminance(r, g, b)
                     val soft = smoothstep(0.58f, 0.95f, lum) * skyMask
-                    r = mix(r, lum, soft * 0.10f)
-                    g = mix(g, lum, soft * 0.10f)
-                    b = mix(b, lum, soft * 0.08f)
+                    r = mix(r, lum, soft * 0.08f)
+                    g = mix(g, lum, soft * 0.08f)
+                    b = mix(b, lum, soft * 0.07f)
                 }
 
                 // Background calming: lower color/contrast/luminance on distractions and active greens.

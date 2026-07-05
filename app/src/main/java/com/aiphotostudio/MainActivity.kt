@@ -297,7 +297,7 @@ private fun Header() {
             Text("AI Photo Studio", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
             Text("Offline automatic editor", color = Color(0xFF9A9A9A), fontSize = 12.sp)
         }
-        Text("V1.4.3", color = Color(0xFF696969), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+        Text("V1.4.4", color = Color(0xFF696969), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
     }
 }
 

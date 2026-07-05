@@ -1,11 +1,13 @@
 package com.aiphotostudio.pipeline
 
+import com.aiphotostudio.editgraph.GeometryOperation
+
 /**
  * Converts internal scene understanding into concise user-facing edit explanations.
  * The app should feel like it understood the photo, not like it applied a random preset.
  */
 object EditExplanationBuilder {
-    fun build(profile: SceneUnderstandingProfile, candidateName: String): EditDecisionSummary {
+    fun build(profile: SceneUnderstandingProfile, candidateName: String, geometry: GeometryOperation = GeometryOperation()): EditDecisionSummary {
         val observations = mutableListOf<String>()
         val actions = mutableListOf<String>()
 
@@ -53,6 +55,13 @@ object EditExplanationBuilder {
         if (profile.dramaticContrastLikelihood > 0.70f) actions += "contrast preserved"
         if (profile.flatLightLikelihood > 0.55f) actions += "depth added"
 
+        // v1.4.4: mention framing explicitly whenever Auto Frame actually cropped the photo,
+        // since Before/After share the same crop and the user may otherwise not realize
+        // Auto Frame ran at all.
+        if (geometry.cropTop > 0.015f || geometry.cropLeft > 0.015f || geometry.cropRight < 0.985f) {
+            actions.add(0, "framing improved")
+        }
+
         val shortSummary = actions.distinct().take(3).joinToString(" · ").ifBlank { "Professional edit selected" }
         val detail = buildString {
             append("Detected ")
@@ -78,3 +87,4 @@ data class EditDecisionSummary(
     val selectedCandidate: String,
     val dominantScene: String
 )
+
